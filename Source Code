@@ -1,0 +1,148 @@
+    # Module written by Chris Fahey on May 24, 2015
+    # Class project for Coursera Course provided by Johns Hopkins University entitled "Getting and Cleaning Data"
+    
+    # Set up variables for moving to appropriate directory, if needed
+    DIR_mywd <- "/home/gip/Desktop/UCI HAR Dataset"
+    #DIR_mywdtest <- "/home/gip/Desktop/UCI HAR Dataset/test"
+    #DIR_mywdtrain <- "/home/gip/Desktop/UCI HAR Dataset/train"
+    setwd(DIR_mywd)
+    FN_act_labels <- "activity_labels.txt"
+    FN_features <- "features.txt"
+    FN_test_subjectid <- "subject_test.txt"
+    FN_train_subjectid <- "subject_train.txt"
+    FN_xtest <- "X_test.txt"
+    FN_xtrain <- "X_train.txt"
+    FN_ytest <- "y_test.txt"
+    FN_ytrain <- "y_train.txt"
+
+    #CurSubjectNum <- 1
+
+    # Start the processing
+    
+    # Read Features.txt file
+    DF_features <- read.table(FN_features, strip.white = TRUE, col.names = c("Num","ColNm"))
+    V_newnames <- make.names(DF_features$ColNm, unique = TRUE) # This is now a vector, and can be used for col.names function
+
+    # Identify Column names in myfeatures that have "mean" or "std" in text, and update col Needed with identifier 1
+    V_needed1a <- DF_features[grep("mean", DF_features$ColNm), ]
+    V_needed1b <- DF_features[grep("Mean", DF_features$ColNm), ]
+    V_needed2 <- DF_features[grep("std", DF_features$ColNm), ]
+    V_neededcols <- c(make.names(V_needed1a$ColNm), make.names(V_needed1b$ColNm), make.names(V_needed2$ColNm))
+    
+    # Remove unneeded variables
+    rm(V_needed1a)
+    rm(V_needed1b)
+    rm(V_needed2)
+    rm(DF_features)
+    
+    DF_xpart1 <- read.table(FN_xtest, col.names = V_newnames)  # Add relevent column names 
+
+    # remove unneeded columns
+    DF_xpart1 <- subset(DF_xpart1, select = V_neededcols) #Remove unnecessary columns
+    # Read the y data table
+    DF_ypart1 <- read.table(FN_ytest, col.names = "ACTIVITY_ID") # Matches identifier in the activities description file
+    
+    # Assign an ID number to rows
+    #DF_ypart1$SubjectID <- DF_ypart1$ACTIVITY_ID #add a new column
+
+    # read subject id file
+    DF_ids <- read.table(FN_test_subjectid, col.names = "SubjectID")
+    
+    # Now merge y data with subject id data
+    DF_ypart1 <- merge(DF_ypart1, DF_ids, by="row.names", sort = FALSE) 
+    DF_ypart1 <- subset(DF_ypart1, select = -c(Row.names))  # Remove the column of rownames, which is just a row counter
+    
+    # Now merge x and y data
+    DF_data1 <- merge(DF_xpart1, DF_ypart1, by="row.names", sort = FALSE) 
+    DF_data1 <- subset(DF_data1, select = -c(Row.names))  # Remove the column of rownames, which is just a row counter
+    rm(DF_xpart1)                                         # Free space otherwise wasted, to avoid "cannot allocate vector of size" error
+    rm(DF_ypart1)
+    
+    # Now perform the same read functions for the training data
+    DF_xpart2 <-read.table(FN_xtrain, col.names = V_newnames)
+    
+    # remove unneeded columns
+    DF_xpart2 <- subset(DF_xpart2, select = V_neededcols)  #Remove unnecessary columns
+    DF_ypart2 <-read.table(FN_ytrain, col.names = "ACTIVITY_ID")
+    
+    #again, add a SubjectID column, which will shortly be updated to reflect subject number
+    #DF_ypart2$SubjectID <- DF_ypart2$ACTIVITY_ID
+
+    # read subject id file
+    DF_ids <- read.table(FN_train_subjectid, col.names = "SubjectID")
+    
+    # Now merge y data with subject id data
+    DF_ypart2 <- merge(DF_ypart2, DF_ids, by="row.names", sort = FALSE) 
+    DF_ypart2 <- subset(DF_ypart2, select = -c(Row.names))  # Remove the column of rownames, which is just a row counter
+    
+    #again, merge x & y data
+    DF_data2 <- merge(DF_xpart2, DF_ypart2, by="row.names", sort = FALSE) #Overwrite the X data frame, which is larger
+    DF_data2 <- subset(DF_data2, select = -c(Row.names)) # Remove the duplicate column 
+    rm(DF_xpart2) # Free space otherwise wasted, to avoid "cannot allocate vector of size" error
+    rm(DF_ypart2 )
+    
+    DF_data <- rbind(DF_data1, DF_data2)  #Row bind the two data frames
+    rm(DF_data1)  # Save some more space
+    rm(DF_data2)
+
+    # Now focus on adding a description for activities
+ 
+    # Read activity_labels.txt file
+    DF_labels <- read.table(FN_act_labels, strip.white = TRUE, col.names = c("ACTIVITY_ID","Activity"))
+    
+    # Add activity labels. Assign an activity description for each activity number by merging one-to-many with mylabels dataframe
+    final_data <- merge(DF_data, DF_labels, by= c("ACTIVITY_ID"), sort = FALSE)    # Because this screws up the alignment with the other data tables, this can only be done at the end
+    
+    #Reorder the column names, for easer interpretation.  Columns should start SubjectID, Activity, ACTIVITY_ID, then the data
+    #Move Activity first
+    col_idx <- grep("Activity", names(final_data))
+    final_data <-final_data[, c(col_idx, (1:ncol(final_data))[-col_idx])]
+    
+    #Now relocate SubjectID col
+    col_idx <- grep("SubjectID", names(final_data))
+    final_data <-final_data[, c(col_idx, (1:ncol(final_data))[-col_idx])]
+    head(final_data)
+        
+    # Now write the final_data (Be sure to delete the existing file first, I think)
+    write.table(final_data,file="proj-cleaningdata-finaldataframe.txt",row.name=FALSE)
+
+    #remove activity column to make entire dataframe numeric, and thus easy to summarize using apply function
+    final_data <- subset(final_data, select = -c(Activity)) #Remove character column, or else face warnings from aggregate process, and a bunch of NA in Activity column
+    
+    td <- aggregate(final_data, by=list(final_data$ACTIVITY_ID, final_data$SubjectID), data = final_data, FUN = mean) # td is short for tidy data
+    
+    # Now Make the final deliverable, Tidy Table 
+    tidydata <- subset(td, select = -c(Group.1,Group.2)) #Remove the extra columns, added from the aggregate procedure
+
+    # lastly, just confirm the data is correct.  
+    #x <- final_data #or td, or whatever the relevant data frame is
+    #aggregate(cbind(x$tBodyAcc.std...X , x$tBodyAcc.std...Y, x$tBodyAcc.std...Z), by=list(Activity=x$ACTIVITY_ID, Subject=x$SubjectID), data = x, FUN = mean)
+    # Read the top row, for subject 1, activity 1.  Then run against the tidy data to confirm consistency
+    tidydata$tBodyAcc.std...X[1] # activity 1, subject 1 should be -0.28374
+    tidydata$tBodyAcc.std...Y[1] # activity 1, subject 1 should be  0.11446
+    tidydata$tBodyAcc.std...Z[1] # activity 1, subject 1 should be -0.26003
+    ncol(tidydata) # should be 88
+    nrow(tidydata) # should be 180
+    
+    write.table(tidydata, file = "tidydata.txt", row.names=FALSE)
+
+    # FINAL CLEANUP OF VARIABLES USED
+    rm(col_idx)
+    rm(DF_data)
+    rm(DF_labels)
+    rm(DIR_mywd)
+    rm(final_data)
+    rm(FN_act_labels)
+    rm(FN_features)
+    rm(FN_xtest)
+    rm(FN_ytest)
+    rm(FN_xtrain)
+    rm(FN_ytrain)
+    rm(td)
+    rm(tidydata)
+    rm(V_neededcols)
+    rm(V_newnames)
+    rm(DF_ids)
+    rm(FN_test_subjectid)
+    rm(FN_train_subjectid)
+    #ls()
